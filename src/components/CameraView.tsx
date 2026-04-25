@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-interface CameraViewProps {
+export interface CameraViewProps {
   onStreamReady?: (video: HTMLVideoElement) => void;
 }
 
