@@ -1,14 +1,16 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { getBest, type BestScore } from "@/lib/scores";
 import { todaySeed } from "@/lib/rng";
 
 const GRID_OPTIONS = [
+  { size: 2, label: "2×2", sub: "KIDS" },
   { size: 3, label: "3×3", sub: "EASY" },
   { size: 4, label: "4×4", sub: "MEDIUM" },
   { size: 5, label: "5×5", sub: "HARD" },
+  { size: 6, label: "6×6", sub: "INSANE" },
 ];
 
 function fmtTime(seconds: number): string {
@@ -19,7 +21,9 @@ function fmtTime(seconds: number): string {
 
 export default function Home() {
   const [selected, setSelected] = useState(3);
+  const [attack, setAttack] = useState(false);
   const [bests, setBests] = useState<Record<number, BestScore | null>>({});
+  const fileRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
   // localStorage is client-only — read after mount to avoid hydration mismatch.
@@ -30,6 +34,20 @@ export default function Home() {
   }, []);
 
   const selectedBest = bests[selected];
+
+  const startUrl = (grid: number) =>
+    `/game?grid=${grid}${attack ? "&mode=attack" : ""}`;
+
+  const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      sessionStorage.setItem("snapzule:upload", reader.result as string);
+      router.push(startUrl(selected));
+    };
+    reader.readAsDataURL(file);
+  };
 
   return (
     <main className="min-h-screen flex flex-col items-center justify-center px-4 py-12 gap-12 relative overflow-hidden">
@@ -95,22 +113,34 @@ export default function Home() {
             <p className="brutal-heading text-2xl border-b-4 border-black w-full text-center pb-2">
               SELECT DIFFICULTY
             </p>
-            <div className="flex w-full gap-2 justify-center">
+            <div className="flex flex-wrap w-full gap-2 justify-center">
               {GRID_OPTIONS.map(({ size, label, sub }) => (
                 <button
                   key={size}
                   onClick={() => setSelected(size)}
-                  className={`brutal-btn flex-col gap-1 w-24 ${
+                  className={`brutal-btn flex-col gap-0.5 w-20 py-2 ${
                     selected === size
                       ? "bg-purple text-white shadow-[0px_0px_0px_0px_#000] translate-y-1 translate-x-1"
                       : "bg-white text-black hover:bg-gray-100"
                   }`}
                 >
-                  <span className="text-xl brutal-heading">{label}</span>
-                  <span className="text-[10px] tracking-wider">{sub}</span>
+                  <span className="text-lg brutal-heading">{label}</span>
+                  <span className="text-[9px] tracking-wider">{sub}</span>
                 </button>
               ))}
             </div>
+
+            {/* Time-attack toggle */}
+            <button
+              onClick={() => setAttack((a) => !a)}
+              className={`brutal-btn w-full text-sm py-2 ${
+                attack
+                  ? "bg-red text-white shadow-[0px_0px_0px_0px_#000] translate-y-1 translate-x-1"
+                  : "bg-white text-black hover:bg-gray-100"
+              }`}
+            >
+              ⏱ TIME ATTACK: {attack ? "ON" : "OFF"}
+            </button>
 
             {/* Best score for the selected difficulty */}
             <div className="w-full border-2 border-black bg-gray-100 px-3 py-2 text-center font-bold text-xs uppercase tracking-wider shadow-[2px_2px_0px_0px_#000]">
@@ -128,14 +158,27 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Play + Daily Challenge buttons */}
+          {/* Play / Upload / Daily Challenge buttons */}
           <div className="flex flex-col gap-3 mt-8">
             <button
-              onClick={() => router.push(`/game?grid=${selected}`)}
+              onClick={() => router.push(startUrl(selected))}
               className="brutal-btn bg-red text-white w-full text-2xl py-4"
             >
               PLAY NOW
             </button>
+            <button
+              onClick={() => fileRef.current?.click()}
+              className="brutal-btn bg-blue-400 text-white w-full text-lg py-3"
+            >
+              🖼 UPLOAD PHOTO
+            </button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleUpload}
+            />
             <button
               onClick={() =>
                 router.push(`/game?grid=3&seed=${encodeURIComponent(todaySeed())}`)

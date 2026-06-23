@@ -39,23 +39,9 @@ export function usePuzzle() {
   // Swap history for undo: each entry is the pair of grid indices swapped.
   const historyRef = useRef<[number, number][]>([]);
 
-  const generate = useCallback(
-    (
-      video: HTMLVideoElement,
-      gridSize: number = 3,
-      opts: GenerateOpts = {},
-    ) => {
-      const canvas = document.createElement("canvas");
-      canvas.width = video.videoWidth || 640;
-      canvas.height = video.videoHeight || 480;
-      const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
-
-      // Mirror horizontally
-      ctx.translate(canvas.width, 0);
-      ctx.scale(-1, 1);
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-      const imageDataUrl = canvas.toDataURL("image/png");
+  // Shared core: given a finished image data URL, scramble & set the puzzle.
+  const buildPuzzle = useCallback(
+    (imageDataUrl: string, gridSize: number, opts: GenerateOpts = {}) => {
       const total = gridSize * gridSize;
 
       const ordered: Tile[] = Array.from({ length: total }, (_, i) => ({
@@ -81,6 +67,36 @@ export function usePuzzle() {
       setPuzzle({ imageDataUrl, tiles: shuffled, gridSize, solved: false, seed });
     },
     [],
+  );
+
+  /** Build a puzzle from a live webcam frame (mirrored). */
+  const generate = useCallback(
+    (
+      video: HTMLVideoElement,
+      gridSize: number = 3,
+      opts: GenerateOpts = {},
+    ) => {
+      const canvas = document.createElement("canvas");
+      canvas.width = video.videoWidth || 640;
+      canvas.height = video.videoHeight || 480;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
+
+      // Mirror horizontally
+      ctx.translate(canvas.width, 0);
+      ctx.scale(-1, 1);
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      buildPuzzle(canvas.toDataURL("image/png"), gridSize, opts);
+    },
+    [buildPuzzle],
+  );
+
+  /** Build a puzzle from an uploaded image data URL (no mirroring). */
+  const generateFromImage = useCallback(
+    (dataUrl: string, gridSize: number = 3, opts: GenerateOpts = {}) => {
+      buildPuzzle(dataUrl, gridSize, opts);
+    },
+    [buildPuzzle],
   );
 
   const swapTiles = useCallback((indexA: number, indexB: number) => {
@@ -121,5 +137,5 @@ export function usePuzzle() {
     setPuzzle(null);
   }, []);
 
-  return { puzzle, generate, swapTiles, undo, reset };
+  return { puzzle, generate, generateFromImage, swapTiles, undo, reset };
 }
