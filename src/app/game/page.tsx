@@ -10,6 +10,7 @@ import type { PuzzleBoardProps } from "@/components/PuzzleBoard";
 import type { WinScreenProps } from "@/components/WinScreen";
 import { usePuzzle } from "@/hooks/usePuzzle";
 import { saveScore } from "@/lib/scores";
+import * as sfx from "@/lib/sfx";
 
 const CameraView = dynamic<CameraViewProps>(
   () => import("@/components/CameraView"),
@@ -70,7 +71,20 @@ function GameContent() {
   const [moves, setMoves] = useState(0);
   const [seconds, setSeconds] = useState(0);
   const [records, setRecords] = useState({ bestMoves: false, bestTime: false });
+  const [muted, setMutedState] = useState(false);
+  const correctRef = useRef(0);
+  const lastSeedRef = useRef<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Sync mute UI with stored preference on mount.
+  useEffect(() => setMutedState(sfx.isMuted()), []);
+
+  const toggleMute = useCallback(() => {
+    setMutedState((m) => {
+      sfx.setMuted(!m);
+      return !m;
+    });
+  }, []);
 
   const startTimer = useCallback(() => {
     setSeconds(0);
@@ -103,7 +117,10 @@ function GameContent() {
     }
   }, [attackMode, stage, seconds, budget, stopTimer]);
 
-  const handleSnap = useCallback(() => setStage("countdown"), []);
+  const handleSnap = useCallback(() => {
+    sfx.snap();
+    setStage("countdown");
+  }, []);
 
   const handleCountdownComplete = useCallback(() => {
     if (videoRef.current) generate(videoRef.current, gridSize, { seed });
@@ -116,6 +133,7 @@ function GameContent() {
     (a: number, b: number) => {
       swapTiles(a, b);
       setMoves((m) => m + 1);
+      sfx.swap();
     },
     [swapTiles],
   );
@@ -124,12 +142,31 @@ function GameContent() {
   useEffect(() => {
     if (puzzle?.solved) {
       stopTimer();
+      sfx.win();
       setRecords(saveScore(gridSize, moves, seconds));
       setTimeout(() => setStage("win"), 300);
     }
     // moves/seconds intentionally captured at solve time
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [puzzle?.solved, stopTimer, gridSize]);
+
+  // Blip when a swap lands more tiles in their home slots.
+  useEffect(() => {
+    if (!puzzle) {
+      lastSeedRef.current = null;
+      correctRef.current = 0;
+      return;
+    }
+    const correct = puzzle.tiles.filter((t) => t.id === t.currentIndex).length;
+    // New puzzle (seed changed) — set a baseline without sounding.
+    if (puzzle.seed !== lastSeedRef.current) {
+      lastSeedRef.current = puzzle.seed;
+      correctRef.current = correct;
+      return;
+    }
+    if (correct > correctRef.current && !puzzle.solved) sfx.place();
+    correctRef.current = correct;
+  }, [puzzle]);
 
   const handleRetake = useCallback(() => {
     resetPuzzle();
@@ -172,12 +209,21 @@ function GameContent() {
 
       {/* Top Command Bar */}
       <div className="w-full max-w-5xl brutal-box bg-white p-4 mb-8 flex flex-col md:flex-row items-center justify-between gap-4 z-10">
-        <button
-          onClick={() => router.push("/")}
-          className="brutal-btn bg-yellow text-sm px-6 py-2 whitespace-nowrap"
-        >
-          ← BACK TO MENU
-        </button>
+        <div className="flex gap-2 items-center">
+          <button
+            onClick={() => router.push("/")}
+            className="brutal-btn bg-yellow text-sm px-6 py-2 whitespace-nowrap"
+          >
+            ← BACK TO MENU
+          </button>
+          <button
+            onClick={toggleMute}
+            aria-label={muted ? "Unmute" : "Mute"}
+            className="brutal-btn bg-white text-lg px-3 py-2"
+          >
+            {muted ? "🔇" : "🔊"}
+          </button>
+        </div>
 
         <h1 className="brutal-heading text-4xl hidden md:flex gap-2">
           <span className="bg-black text-white px-2 transform -rotate-2">
@@ -261,6 +307,7 @@ function GameContent() {
               seconds={seconds}
               gridSize={gridSize}
               seed={puzzle.seed}
+              imageDataUrl={puzzle.imageDataUrl}
               records={records}
               onPlayAgain={handlePlayAgain}
               onRetake={handleRetake}

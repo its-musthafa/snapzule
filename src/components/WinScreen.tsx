@@ -2,12 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import { getBest, type BestScore } from "@/lib/scores";
+import { downloadWinCard } from "@/lib/wincard";
 
 export interface WinScreenProps {
   moves: number;
   seconds: number;
   gridSize: number;
   seed: string;
+  imageDataUrl: string;
   records: { bestMoves: boolean; bestTime: boolean };
   onPlayAgain: () => void;
   onRetake: () => void;
@@ -24,6 +26,7 @@ export default function WinScreen({
   seconds,
   gridSize,
   seed,
+  imageDataUrl,
   records,
   onPlayAgain,
   onRetake,
@@ -31,6 +34,7 @@ export default function WinScreen({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [best, setBest] = useState<BestScore | null>(null);
   const [copied, setCopied] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   // Read the stored best after the solve has been recorded.
   useEffect(() => {
@@ -47,6 +51,15 @@ export default function WinScreen({
     }
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleDownload = async () => {
+    setSaving(true);
+    try {
+      await downloadWinCard({ imageDataUrl, gridSize, moves, seconds });
+    } finally {
+      setSaving(false);
+    }
   };
 
   useEffect(() => {
@@ -189,6 +202,13 @@ export default function WinScreen({
           className="brutal-btn bg-[var(--brutal-blue)] text-white text-xl md:text-2xl py-4 px-8 border-4 border-black shadow-[6px_6px_0px_0px_#000] transform hover:-rotate-2"
         >
           {copied ? "LINK COPIED!" : "SHARE SCRAMBLE"}
+        </button>
+        <button
+          onClick={handleDownload}
+          disabled={saving}
+          className="brutal-btn bg-green-400 text-black text-xl md:text-2xl py-4 px-8 border-4 border-black shadow-[6px_6px_0px_0px_#000] transform hover:rotate-2 disabled:opacity-60"
+        >
+          {saving ? "SAVING..." : "💾 SAVE CARD"}
         </button>
       </div>
     </div>
