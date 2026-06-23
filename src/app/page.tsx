@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { getBest, type BestScore } from "@/lib/scores";
+import { todaySeed } from "@/lib/rng";
 
 const GRID_OPTIONS = [
   { size: 3, label: "3×3", sub: "EASY" },
@@ -9,9 +11,25 @@ const GRID_OPTIONS = [
   { size: 5, label: "5×5", sub: "HARD" },
 ];
 
+function fmtTime(seconds: number): string {
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return mins > 0 ? `${mins}:${String(secs).padStart(2, "0")}` : `${secs}s`;
+}
+
 export default function Home() {
   const [selected, setSelected] = useState(3);
+  const [bests, setBests] = useState<Record<number, BestScore | null>>({});
   const router = useRouter();
+
+  // localStorage is client-only — read after mount to avoid hydration mismatch.
+  useEffect(() => {
+    const next: Record<number, BestScore | null> = {};
+    for (const { size } of GRID_OPTIONS) next[size] = getBest(size);
+    setBests(next);
+  }, []);
+
+  const selectedBest = bests[selected];
 
   return (
     <main className="min-h-screen flex flex-col items-center justify-center px-4 py-12 gap-12 relative overflow-hidden">
@@ -93,15 +111,40 @@ export default function Home() {
                 </button>
               ))}
             </div>
+
+            {/* Best score for the selected difficulty */}
+            <div className="w-full border-2 border-black bg-gray-100 px-3 py-2 text-center font-bold text-xs uppercase tracking-wider shadow-[2px_2px_0px_0px_#000]">
+              {selectedBest ? (
+                <span>
+                  BEST · <span className="text-red">{selectedBest.moves}</span>{" "}
+                  MOVES ·{" "}
+                  <span className="text-purple">
+                    {fmtTime(selectedBest.seconds)}
+                  </span>
+                </span>
+              ) : (
+                <span className="text-gray-400">NO RECORD YET</span>
+              )}
+            </div>
           </div>
 
-          {/* Play button */}
-          <button
-            onClick={() => router.push(`/game?grid=${selected}`)}
-            className="brutal-btn bg-red text-white w-full text-2xl py-4 mt-8"
-          >
-            PLAY NOW
-          </button>
+          {/* Play + Daily Challenge buttons */}
+          <div className="flex flex-col gap-3 mt-8">
+            <button
+              onClick={() => router.push(`/game?grid=${selected}`)}
+              className="brutal-btn bg-red text-white w-full text-2xl py-4"
+            >
+              PLAY NOW
+            </button>
+            <button
+              onClick={() =>
+                router.push(`/game?grid=3&seed=${encodeURIComponent(todaySeed())}`)
+              }
+              className="brutal-btn bg-yellow text-black w-full text-lg py-3"
+            >
+              📅 DAILY CHALLENGE
+            </button>
+          </div>
         </div>
       </div>
 

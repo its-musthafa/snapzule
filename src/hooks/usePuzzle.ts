@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
+import { mulberry32, hashSeed } from "@/lib/rng";
 
 export interface Tile {
   id: number; // original position (0 = top-left)
@@ -12,12 +13,18 @@ export interface PuzzleState {
   tiles: Tile[];
   gridSize: number; // e.g. 3 for 3x3
   solved: boolean;
+  seed: string; // scramble seed — daily/shared, or an auto-generated random one
 }
 
-function shuffle<T>(arr: T[]): T[] {
+export interface GenerateOpts {
+  seed?: string;
+  filter?: boolean; // duotone — wired in a later phase
+}
+
+function shuffle<T>(arr: T[], rng: () => number = Math.random): T[] {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = Math.floor(rng() * (i + 1));
     [a[i], a[j]] = [a[j], a[i]];
   }
   return a;
@@ -29,9 +36,15 @@ function isSolved(tiles: Tile[]): boolean {
 
 export function usePuzzle() {
   const [puzzle, setPuzzle] = useState<PuzzleState | null>(null);
+  // Swap history for undo: each entry is the pair of grid indices swapped.
+  const historyRef = useRef<[number, number][]>([]);
 
   const generate = useCallback(
-    (video: HTMLVideoElement, gridSize: number = 3) => {
+    (
+      video: HTMLVideoElement,
+      gridSize: number = 3,
+      opts: GenerateOpts = {},
+    ) => {
       const canvas = document.createElement("canvas");
       canvas.width = video.videoWidth || 640;
       canvas.height = video.videoHeight || 480;
@@ -50,15 +63,22 @@ export function usePuzzle() {
         currentIndex: i,
       }));
 
+      // Use the given seed (daily/shared) or mint a random one so every
+      // puzzle is reproducible & shareable.
+      const seed =
+        opts.seed ?? Math.random().toString(36).slice(2, 8).toUpperCase();
+      const rng = mulberry32(hashSeed(seed));
+
       let shuffled: Tile[];
       do {
-        shuffled = shuffle(ordered).map((t, idx) => ({
+        shuffled = shuffle(ordered, rng).map((t, idx) => ({
           ...t,
           currentIndex: idx,
         }));
       } while (isSolved(shuffled));
 
-      setPuzzle({ imageDataUrl, tiles: shuffled, gridSize, solved: false });
+      historyRef.current = [];
+      setPuzzle({ imageDataUrl, tiles: shuffled, gridSize, solved: false, seed });
     },
     [],
   );
@@ -72,12 +92,34 @@ export function usePuzzle() {
       if (a === -1 || b === -1) return prev;
       tiles[a] = { ...tiles[a], currentIndex: indexB };
       tiles[b] = { ...tiles[b], currentIndex: indexA };
+      historyRef.current.push([indexA, indexB]);
       const solved = isSolved(tiles);
       return { ...prev, tiles, solved };
     });
   }, []);
 
-  const reset = useCallback(() => setPuzzle(null), []);
+  /** Undo the last swap. Returns true if a swap was reverted. */
+  const undo = useCallback((): boolean => {
+    const last = historyRef.current.pop();
+    if (!last) return false;
+    const [indexA, indexB] = last;
+    setPuzzle((prev) => {
+      if (!prev) return prev;
+      const tiles = [...prev.tiles];
+      const a = tiles.findIndex((t) => t.currentIndex === indexA);
+      const b = tiles.findIndex((t) => t.currentIndex === indexB);
+      if (a === -1 || b === -1) return prev;
+      tiles[a] = { ...tiles[a], currentIndex: indexB };
+      tiles[b] = { ...tiles[b], currentIndex: indexA };
+      return { ...prev, tiles, solved: isSolved(tiles) };
+    });
+    return true;
+  }, []);
 
-  return { puzzle, generate, swapTiles, reset };
+  const reset = useCallback(() => {
+    historyRef.current = [];
+    setPuzzle(null);
+  }, []);
+
+  return { puzzle, generate, swapTiles, undo, reset };
 }

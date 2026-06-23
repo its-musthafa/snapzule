@@ -9,6 +9,7 @@ import type { CountdownOverlayProps } from "@/components/CountdownOverlay";
 import type { PuzzleBoardProps } from "@/components/PuzzleBoard";
 import type { WinScreenProps } from "@/components/WinScreen";
 import { usePuzzle } from "@/hooks/usePuzzle";
+import { saveScore } from "@/lib/scores";
 
 const CameraView = dynamic<CameraViewProps>(
   () => import("@/components/CameraView"),
@@ -40,6 +41,7 @@ function GameContent() {
     5,
     Math.max(3, Number(searchParams.get("grid") ?? 3)),
   );
+  const seed = searchParams.get("seed") ?? undefined;
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const resetGestureRef = useRef<(() => void) | null>(null);
@@ -49,6 +51,7 @@ function GameContent() {
   // Stats
   const [moves, setMoves] = useState(0);
   const [seconds, setSeconds] = useState(0);
+  const [records, setRecords] = useState({ bestMoves: false, bestTime: false });
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const startTimer = useCallback(() => {
@@ -65,11 +68,11 @@ function GameContent() {
   const handleSnap = useCallback(() => setStage("countdown"), []);
 
   const handleCountdownComplete = useCallback(() => {
-    if (videoRef.current) generate(videoRef.current, gridSize);
+    if (videoRef.current) generate(videoRef.current, gridSize, { seed });
     setMoves(0);
     startTimer();
     setStage("puzzle");
-  }, [generate, gridSize, startTimer]);
+  }, [generate, gridSize, seed, startTimer]);
 
   const handleSwap = useCallback(
     (a: number, b: number) => {
@@ -83,9 +86,12 @@ function GameContent() {
   useEffect(() => {
     if (puzzle?.solved) {
       stopTimer();
+      setRecords(saveScore(gridSize, moves, seconds));
       setTimeout(() => setStage("win"), 300);
     }
-  }, [puzzle?.solved, stopTimer]);
+    // moves/seconds intentionally captured at solve time
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [puzzle?.solved, stopTimer, gridSize]);
 
   const handleRetake = useCallback(() => {
     resetPuzzle();
@@ -199,6 +205,8 @@ function GameContent() {
               moves={moves}
               seconds={seconds}
               gridSize={gridSize}
+              seed={puzzle.seed}
+              records={records}
               onPlayAgain={handlePlayAgain}
               onRetake={handleRetake}
             />

@@ -1,23 +1,53 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { getBest, type BestScore } from "@/lib/scores";
 
 export interface WinScreenProps {
   moves: number;
   seconds: number;
   gridSize: number;
+  seed: string;
+  records: { bestMoves: boolean; bestTime: boolean };
   onPlayAgain: () => void;
   onRetake: () => void;
+}
+
+function fmtTime(seconds: number): string {
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
 }
 
 export default function WinScreen({
   moves,
   seconds,
   gridSize,
+  seed,
+  records,
   onPlayAgain,
   onRetake,
 }: WinScreenProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [best, setBest] = useState<BestScore | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  // Read the stored best after the solve has been recorded.
+  useEffect(() => {
+    setBest(getBest(gridSize));
+  }, [gridSize]);
+
+  const handleShare = async () => {
+    const url = `${window.location.origin}/game?grid=${gridSize}&seed=${encodeURIComponent(seed)}`;
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      // clipboard blocked — fall back to a prompt
+      window.prompt("Copy this scramble link:", url);
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   useEffect(() => {
     import("canvas-confetti").then((mod) => {
@@ -70,9 +100,8 @@ export default function WinScreen({
     });
   }, []);
 
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  const timeStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+  const timeStr = fmtTime(seconds);
+  const isNewBest = records.bestMoves || records.bestTime;
 
   return (
     <div className="relative flex flex-col items-center justify-center gap-10 py-10 w-full z-10">
@@ -90,6 +119,11 @@ export default function WinScreen({
         <h2 className="brutal-heading text-6xl sm:text-8xl bg-green-400 text-black px-8 py-2 border-4 border-black shadow-[8px_8px_0px_0px_#000] transform rotate-1">
           YOU WIN!
         </h2>
+        {isNewBest && (
+          <p className="brutal-heading text-2xl bg-[var(--brutal-red)] text-white px-5 py-1 border-4 border-black shadow-[4px_4px_0px_0px_#000] transform -rotate-3 animate-pulse">
+            ⭐ NEW BEST!
+          </p>
+        )}
       </div>
 
       {/* Stats Board */}
@@ -110,6 +144,13 @@ export default function WinScreen({
           <span className="brutal-heading text-4xl text-[var(--brutal-red)]">
             {moves}
           </span>
+          <span className="font-bold text-[10px] uppercase tracking-wider mt-1 text-gray-600">
+            {records.bestMoves
+              ? "★ BEST!"
+              : best
+                ? `best ${best.moves}`
+                : " "}
+          </span>
         </div>
 
         <div className="flex flex-col items-center bg-gray-100 border-4 border-black px-6 py-4 shadow-[4px_4px_0px_0px_#000] transform -rotate-1 min-w-[120px]">
@@ -118,6 +159,13 @@ export default function WinScreen({
           </span>
           <span className="brutal-heading text-4xl text-[var(--brutal-purple)]">
             {timeStr}
+          </span>
+          <span className="font-bold text-[10px] uppercase tracking-wider mt-1 text-gray-600">
+            {records.bestTime
+              ? "★ BEST!"
+              : best
+                ? `best ${fmtTime(best.seconds)}`
+                : " "}
           </span>
         </div>
       </div>
@@ -135,6 +183,12 @@ export default function WinScreen({
           className="brutal-btn bg-purple text-white text-xl md:text-2xl py-4 px-8 border-4 border-black shadow-[6px_6px_0px_0px_#000] transform hover:rotate-2"
         >
           NEW SELFIE
+        </button>
+        <button
+          onClick={handleShare}
+          className="brutal-btn bg-[var(--brutal-blue)] text-white text-xl md:text-2xl py-4 px-8 border-4 border-black shadow-[6px_6px_0px_0px_#000] transform hover:-rotate-2"
+        >
+          {copied ? "LINK COPIED!" : "SHARE SCRAMBLE"}
         </button>
       </div>
     </div>
