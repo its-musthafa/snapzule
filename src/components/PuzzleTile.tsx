@@ -13,6 +13,7 @@ export interface PuzzleTileProps {
   isSolved: boolean;
   isGestureHover?: boolean;
   isGestureDragging?: boolean;
+  isPopping?: boolean;
 }
 
 export default function PuzzleTile({
@@ -25,6 +26,7 @@ export default function PuzzleTile({
   isSolved,
   isGestureHover,
   isGestureDragging,
+  isPopping,
 }: PuzzleTileProps) {
   const dragOver = useRef(false);
 
@@ -84,6 +86,13 @@ export default function PuzzleTile({
       {!isSolved && (
         <span className="absolute bottom-1 right-1 bg-black text-white px-1 text-[10px] font-bold select-none border border-black">
           {tile.id}
+        </span>
+      )}
+
+      {/* Combo "+1" pop when this tile lands home */}
+      {isPopping && (
+        <span className="combo-pop pointer-events-none absolute inset-0 flex items-center justify-center brutal-heading text-3xl text-white [text-shadow:2px_2px_0_#000,-2px_-2px_0_#000,2px_-2px_0_#000,-2px_2px_0_#000]">
+          +1
         </span>
       )}
     </div>

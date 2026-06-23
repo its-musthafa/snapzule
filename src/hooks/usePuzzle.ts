@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useRef } from "react";
 import { mulberry32, hashSeed } from "@/lib/rng";
+import { duotone } from "@/lib/image";
 
 export interface Tile {
   id: number; // original position (0 = top-left)
@@ -85,6 +86,9 @@ export function usePuzzle() {
       ctx.translate(canvas.width, 0);
       ctx.scale(-1, 1);
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      ctx.setTransform(1, 0, 0, 1, 0, 0); // reset before pixel ops
+
+      if (opts.filter) duotone(canvas);
 
       buildPuzzle(canvas.toDataURL("image/png"), gridSize, opts);
     },
@@ -94,7 +98,22 @@ export function usePuzzle() {
   /** Build a puzzle from an uploaded image data URL (no mirroring). */
   const generateFromImage = useCallback(
     (dataUrl: string, gridSize: number = 3, opts: GenerateOpts = {}) => {
-      buildPuzzle(dataUrl, gridSize, opts);
+      if (!opts.filter) {
+        buildPuzzle(dataUrl, gridSize, opts);
+        return;
+      }
+      // Filter needs a canvas: load the image, apply duotone, re-encode.
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = img.naturalWidth || 640;
+        canvas.height = img.naturalHeight || 480;
+        const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        duotone(canvas);
+        buildPuzzle(canvas.toDataURL("image/png"), gridSize, opts);
+      };
+      img.src = dataUrl;
     },
     [buildPuzzle],
   );

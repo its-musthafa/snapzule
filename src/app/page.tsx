@@ -22,6 +22,7 @@ function fmtTime(seconds: number): string {
 export default function Home() {
   const [selected, setSelected] = useState(3);
   const [attack, setAttack] = useState(false);
+  const [filter, setFilter] = useState(false);
   const [bests, setBests] = useState<Record<number, BestScore | null>>({});
   const fileRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
@@ -36,7 +37,7 @@ export default function Home() {
   const selectedBest = bests[selected];
 
   const startUrl = (grid: number) =>
-    `/game?grid=${grid}${attack ? "&mode=attack" : ""}`;
+    `/game?grid=${grid}${attack ? "&mode=attack" : ""}${filter ? "&filter=1" : ""}`;
 
   const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -140,6 +141,18 @@ export default function Home() {
               }`}
             >
               ⏱ TIME ATTACK: {attack ? "ON" : "OFF"}
+            </button>
+
+            {/* Duotone filter toggle */}
+            <button
+              onClick={() => setFilter((f) => !f)}
+              className={`brutal-btn w-full text-sm py-2 ${
+                filter
+                  ? "bg-purple text-white shadow-[0px_0px_0px_0px_#000] translate-y-1 translate-x-1"
+                  : "bg-white text-black hover:bg-gray-100"
+              }`}
+            >
+              🎨 DUOTONE: {filter ? "ON" : "OFF"}
             </button>
 
             {/* Best score for the selected difficulty */}

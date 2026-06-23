@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useCallback } from "react";
+import { useRef, useCallback, useState, useEffect } from "react";
 import type { PuzzleState } from "@/hooks/usePuzzle";
 import { usePinchDrag } from "@/hooks/usePinchDrag";
 import PuzzleTile from "./PuzzleTile";
@@ -9,6 +9,7 @@ export interface PuzzleBoardProps {
   puzzle: PuzzleState;
   videoRef: React.RefObject<HTMLVideoElement | null>;
   onSwap: (indexA: number, indexB: number) => void;
+  onUndo: () => void;
   onRetake: () => void;
 }
 
@@ -19,12 +20,36 @@ export default function PuzzleBoard({
   puzzle,
   videoRef,
   onSwap,
+  onUndo,
   onRetake,
 }: PuzzleBoardProps) {
   const mouseDragSource = useRef<number | null>(null);
   const pipCanvasRef = useRef<HTMLCanvasElement>(null);
 
   const { tiles, gridSize, imageDataUrl, solved } = puzzle;
+
+  // Hint peek: ghost the full solved image over the board briefly.
+  const [showHint, setShowHint] = useState(false);
+  const triggerHint = useCallback(() => {
+    setShowHint(true);
+    setTimeout(() => setShowHint(false), 1500);
+  }, []);
+
+  // Combo "+1" pop: which tile ids just landed home.
+  const prevCorrectRef = useRef<Set<number>>(new Set());
+  const [popIds, setPopIds] = useState<number[]>([]);
+  useEffect(() => {
+    const nowCorrect = new Set(
+      tiles.filter((t) => t.id === t.currentIndex).map((t) => t.id),
+    );
+    const newly = [...nowCorrect].filter((id) => !prevCorrectRef.current.has(id));
+    prevCorrectRef.current = nowCorrect;
+    if (newly.length && !solved) {
+      setPopIds(newly);
+      const to = setTimeout(() => setPopIds([]), 700);
+      return () => clearTimeout(to);
+    }
+  }, [tiles, solved]);
 
   const handleSwap = useCallback(
     (a: number, b: number) => {
@@ -38,6 +63,7 @@ export default function PuzzleBoard({
     pipCanvasRef,
     gridSize,
     onSwap: handleSwap,
+    onPeace: triggerHint,
     enabled: !solved,
   });
 
@@ -91,10 +117,27 @@ export default function PuzzleBoard({
                 isSolved={solved}
                 isGestureHover={isHovered && !isDragSource}
                 isGestureDragging={isDragSource}
+                isPopping={popIds.includes(tile.id)}
               />
             );
           })}
         </div>
+
+        {/* Hint peek — ghost of the full solved image over the board */}
+        {showHint && (
+          <div
+            className="absolute inset-0 z-40 pointer-events-none border-4 border-[var(--brutal-yellow)] opacity-80 transition-opacity"
+            style={{
+              backgroundImage: `url(${imageDataUrl})`,
+              backgroundSize: "cover",
+              backgroundPosition: "center",
+            }}
+          >
+            <span className="absolute top-2 left-2 bg-black text-[var(--brutal-yellow)] brutal-heading text-lg px-2 py-0.5">
+              HINT
+            </span>
+          </div>
+        )}
 
         {/* ── Floating hand cursor on the puzzle board ── */}
         {!solved &&
@@ -154,6 +197,24 @@ export default function PuzzleBoard({
               Point your hand at the board & pinch to swap tiles. Or use your
               mouse.
             </div>
+          </div>
+        )}
+
+        {/* Undo + Hint buttons */}
+        {!solved && (
+          <div className="flex gap-3 w-full">
+            <button
+              onClick={onUndo}
+              className="brutal-btn bg-white flex-1 justify-center text-lg py-3"
+            >
+              ↩ UNDO
+            </button>
+            <button
+              onClick={triggerHint}
+              className="brutal-btn bg-yellow text-black flex-1 justify-center text-lg py-3"
+            >
+              👁 HINT
+            </button>
           </div>
         )}
 

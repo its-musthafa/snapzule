@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
+import { isFist, isPeace } from "@/lib/gestures";
 
 export interface PinchState {
   isPinching: boolean; // We kept the name so it doesn't break PuzzleBoard, but it's actually "isFist" now!
@@ -15,33 +16,8 @@ interface UsePinchDragOptions {
   pipCanvasRef: React.RefObject<HTMLCanvasElement | null>;
   gridSize: number;
   onSwap: (from: number, to: number) => void;
+  onPeace?: () => void;
   enabled: boolean;
-}
-
-// Calibrated function to detect a FIST instead of a pinch
-function isFist(landmarks: { x: number; y: number; z: number }[]): boolean {
-  const wrist = landmarks[0];
-  const tips = [8, 12, 16, 20]; // Index, Middle, Ring, Pinky tips
-  const mcps = [5, 9, 13, 17]; // Corresponding knuckles (base of fingers)
-
-  let curledFingers = 0;
-  for (let i = 0; i < 4; i++) {
-    const tipDist = Math.hypot(
-      landmarks[tips[i]].x - wrist.x,
-      landmarks[tips[i]].y - wrist.y,
-    );
-    const mcpDist = Math.hypot(
-      landmarks[mcps[i]].x - wrist.x,
-      landmarks[mcps[i]].y - wrist.y,
-    );
-
-    // If the fingertip is closer to the wrist than the knuckle is, the finger is curled inward
-    if (tipDist < mcpDist * 0.9) {
-      curledFingers++;
-    }
-  }
-  // If at least 3 out of 4 fingers are curled in, it's a solid fist
-  return curledFingers >= 3;
 }
 
 export function usePinchDrag({
@@ -49,6 +25,7 @@ export function usePinchDrag({
   pipCanvasRef,
   gridSize,
   onSwap,
+  onPeace,
   enabled,
 }: UsePinchDragOptions) {
   const [pinchState, setPinchState] = useState<PinchState>({
@@ -69,6 +46,11 @@ export function usePinchDrag({
 
   const animFrameRef = useRef<number | null>(null);
   const handsRef = useRef<unknown>(null);
+
+  // Latest onPeace + a cooldown so one ✌️ fires a single hint.
+  const onPeaceRef = useRef(onPeace);
+  onPeaceRef.current = onPeace;
+  const lastPeaceRef = useRef(0);
 
   const getGridIndex = useCallback(
     (x: number, y: number): number => {
@@ -152,6 +134,15 @@ export function usePinchDrag({
               });
             }
             return;
+          }
+
+          // ✌️ peace sign → hint peek (cooldown-gated to one fire per gesture)
+          if (isPeace(landmarks)) {
+            const now = performance.now();
+            if (now - lastPeaceRef.current > 3000) {
+              lastPeaceRef.current = now;
+              onPeaceRef.current?.();
+            }
           }
 
           // Center of the hand is best tracked by the middle finger knuckle (landmark 9)

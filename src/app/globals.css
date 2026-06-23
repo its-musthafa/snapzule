@@ -104,3 +104,22 @@ body {
   transform: translate(3px, 3px);
   box-shadow: 2px 2px 0px var(--border-color);
 }
+
+/* ── Combo "+1" pop when a tile lands home ── */
+@keyframes combo-pop {
+  0% {
+    opacity: 0;
+    transform: translateY(0) scale(0.6);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-8px) scale(1.2);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-28px) scale(1);
+  }
+}
+.combo-pop {
+  animation: combo-pop 0.7s ease-out forwards;
+}

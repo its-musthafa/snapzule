@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { getBest, type BestScore } from "@/lib/scores";
 import { downloadWinCard } from "@/lib/wincard";
+import { useThumbsUp } from "@/hooks/useThumbsUp";
 
 export interface WinScreenProps {
   moves: number;
@@ -11,6 +12,8 @@ export interface WinScreenProps {
   seed: string;
   imageDataUrl: string;
   records: { bestMoves: boolean; bestTime: boolean };
+  videoRef: React.RefObject<HTMLVideoElement | null>;
+  gestureEnabled: boolean;
   onPlayAgain: () => void;
   onRetake: () => void;
 }
@@ -28,6 +31,8 @@ export default function WinScreen({
   seed,
   imageDataUrl,
   records,
+  videoRef,
+  gestureEnabled,
   onPlayAgain,
   onRetake,
 }: WinScreenProps) {
@@ -35,6 +40,13 @@ export default function WinScreen({
   const [best, setBest] = useState<BestScore | null>(null);
   const [copied, setCopied] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  // 👍 thumbs-up → play again (reuses the live camera stream).
+  useThumbsUp({
+    videoRef,
+    enabled: gestureEnabled,
+    onDetect: onPlayAgain,
+  });
 
   // Read the stored best after the solve has been recorded.
   useEffect(() => {
@@ -211,6 +223,12 @@ export default function WinScreen({
           {saving ? "SAVING..." : "💾 SAVE CARD"}
         </button>
       </div>
+
+      {gestureEnabled && (
+        <p className="font-bold text-black text-xs uppercase tracking-widest bg-white border-2 border-black px-4 py-2 shadow-[2px_2px_0px_0px_#000] z-20">
+          👍 thumbs-up to play again
+        </p>
+      )}
     </div>
   );
 }

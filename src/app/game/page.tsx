@@ -53,6 +53,7 @@ function GameContent() {
   );
   const seed = searchParams.get("seed") ?? undefined;
   const attackMode = searchParams.get("mode") === "attack";
+  const filter = searchParams.get("filter") === "1";
   const budget = ATTACK_BUDGET[gridSize] ?? 120;
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -64,6 +65,7 @@ function GameContent() {
     generate,
     generateFromImage,
     swapTiles,
+    undo,
     reset: resetPuzzle,
   } = usePuzzle();
 
@@ -103,11 +105,11 @@ function GameContent() {
     if (!dataUrl) return;
     sessionStorage.removeItem("snapzule:upload");
     setIsUpload(true);
-    generateFromImage(dataUrl, gridSize, { seed });
+    generateFromImage(dataUrl, gridSize, { seed, filter });
     setMoves(0);
     startTimer();
     setStage("puzzle");
-  }, [generateFromImage, gridSize, seed, startTimer]);
+  }, [generateFromImage, gridSize, seed, filter, startTimer]);
 
   // Time-attack: lose when the budget runs out.
   useEffect(() => {
@@ -123,11 +125,11 @@ function GameContent() {
   }, []);
 
   const handleCountdownComplete = useCallback(() => {
-    if (videoRef.current) generate(videoRef.current, gridSize, { seed });
+    if (videoRef.current) generate(videoRef.current, gridSize, { seed, filter });
     setMoves(0);
     startTimer();
     setStage("puzzle");
-  }, [generate, gridSize, seed, startTimer]);
+  }, [generate, gridSize, seed, filter, startTimer]);
 
   const handleSwap = useCallback(
     (a: number, b: number) => {
@@ -137,6 +139,13 @@ function GameContent() {
     },
     [swapTiles],
   );
+
+  const handleUndo = useCallback(() => {
+    if (undo()) {
+      setMoves((m) => Math.max(0, m - 1));
+      sfx.swap();
+    }
+  }, [undo]);
 
   // Watch for solve
   useEffect(() => {
@@ -309,6 +318,8 @@ function GameContent() {
               seed={puzzle.seed}
               imageDataUrl={puzzle.imageDataUrl}
               records={records}
+              videoRef={videoRef}
+              gestureEnabled={!isUpload}
               onPlayAgain={handlePlayAgain}
               onRetake={handleRetake}
             />
@@ -317,6 +328,7 @@ function GameContent() {
               puzzle={puzzle}
               videoRef={videoRef}
               onSwap={handleSwap}
+              onUndo={handleUndo}
               onRetake={handleRetake}
             />
           ))}
