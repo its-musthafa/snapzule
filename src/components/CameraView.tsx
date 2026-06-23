@@ -59,18 +59,24 @@ export default function CameraView({ onStreamReady }: CameraViewProps) {
 
   if (error) {
     return (
-      <div className="w-[640px] max-w-full aspect-video rounded-2xl bg-gray-800 border border-red-500/40 flex flex-col items-center justify-center gap-3 px-6 text-center">
-        <span className="text-3xl">📷</span>
-        <p className="text-red-400 text-sm">{error}</p>
+      <div className="w-full h-full aspect-video bg-red flex flex-col items-center justify-center gap-4 px-6 text-center">
+        <span className="text-6xl drop-shadow-[4px_4px_0px_rgba(0,0,0,1)]">
+          📷
+        </span>
+        <div className="bg-black text-white brutal-heading text-xl px-6 py-3 border-4 border-white shadow-[4px_4px_0px_0px_#fff] transform -rotate-1">
+          <p>{error}</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="relative w-[640px] max-w-full aspect-video rounded-2xl overflow-hidden bg-gray-800 border border-gray-700">
+    <div className="relative w-full h-full aspect-video bg-black overflow-hidden">
       {loading && (
-        <div className="absolute inset-0 flex items-center justify-center text-gray-500 text-sm">
-          Starting camera...
+        <div className="absolute inset-0 flex items-center justify-center bg-black/80 z-10">
+          <div className="bg-yellow text-black border-4 border-black px-6 py-2 brutal-heading text-2xl animate-pulse shadow-[6px_6px_0px_0px_#fff]">
+            INITIALIZING CAMERA...
+          </div>
         </div>
       )}
       <video

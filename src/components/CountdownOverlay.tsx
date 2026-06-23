@@ -21,10 +21,21 @@ export default function CountdownOverlay({
   }, [count, onComplete]);
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center bg-black/50">
-      <span className="text-white text-8xl font-black animate-ping-once drop-shadow-lg">
-        {count === 0 ? "📸" : count}
-      </span>
+    <div className="absolute inset-0 flex items-center justify-center z-20">
+      {/* Harsh flash overlay effect on zero */}
+      {count === 0 && (
+        <div className="absolute inset-0 bg-white opacity-80 z-0"></div>
+      )}
+
+      <div
+        className={`relative z-10 flex items-center justify-center border-8 border-black bg-yellow w-40 h-40 shadow-[12px_12px_0px_0px_#000] 
+        ${count % 2 === 0 ? "transform rotate-3" : "transform -rotate-3"} 
+        transition-transform duration-200`}
+      >
+        <span className="text-black brutal-heading text-8xl drop-shadow-[4px_4px_0px_#fff]">
+          {count === 0 ? "📸" : count}
+        </span>
+      </div>
     </div>
   );
 }

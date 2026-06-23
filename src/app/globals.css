@@ -1,26 +1,106 @@
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=Bebas+Neue&display=swap");
 @import "tailwindcss";
 
+/* ── Neo-Brutalist CSS variables ── */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg-color: #fdfdfd; /* Stark white/off-white background */
+  --border-color: #000000;
+
+  /* Vibrant Retro Accent Colors */
+  --brutal-yellow: #ffcc00;
+  --brutal-purple: #a855f7;
+  --brutal-red: #ef4444;
+  --brutal-blue: #06b6d4;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+/* ── Base ── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+html,
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg-color);
+  color: var(--border-color);
+  font-family: "Space Grotesk", sans-serif;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ── Brutalist Typography ── */
+.brutal-heading {
+  font-family: "Bebas Neue", sans-serif;
+  font-style: italic;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+/* ── Brutalist Box (For cards, webcam container, etc.) ── */
+.brutal-box {
+  background-color: #ffffff;
+  border: 3px solid var(--border-color);
+  box-shadow: 6px 6px 0px var(--border-color);
+  border-radius: 0; /* Sharp, rigid corners */
+  transition: all 0.15s ease;
+}
+
+/* ── Brutalist Buttons ── */
+.brutal-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: "Space Grotesk", sans-serif;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  border: 3px solid var(--border-color);
+  box-shadow: 5px 5px 0px var(--border-color);
+  cursor: pointer;
+  transition: all 0.1s ease-in-out;
+  padding: 0.75rem 1.5rem;
+}
+
+.brutal-btn:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 7px 7px 0px var(--border-color);
+}
+
+.brutal-btn:active {
+  transform: translate(5px, 5px);
+  box-shadow: 0px 0px 0px var(--border-color); /* Shadow flattens when clicked */
+}
+
+/* ── Color Variations ── */
+.bg-yellow {
+  background-color: var(--brutal-yellow);
+  color: var(--border-color);
+}
+.bg-purple {
+  background-color: var(--brutal-purple);
+  color: #ffffff;
+}
+.bg-red {
+  background-color: var(--brutal-red);
+  color: #ffffff;
+}
+
+/* Text colors for headings (matching your screenshot) */
+.text-yellow {
+  color: var(--brutal-yellow);
+}
+.text-purple {
+  color: var(--brutal-purple);
+}
+.text-red {
+  color: var(--brutal-red);
+}
+
+/* ── Grid selector button active state ── */
+.grid-btn-active {
+  background-color: var(--brutal-purple);
+  color: #ffffff;
+  transform: translate(3px, 3px);
+  box-shadow: 2px 2px 0px var(--border-color);
 }

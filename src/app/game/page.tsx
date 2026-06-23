@@ -1,11 +1,13 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useRef, useState, useCallback } from "react";
+import { useRef, useState, useCallback, useEffect, Suspense } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import type { CameraViewProps } from "@/components/CameraView";
 import type { GestureOverlayProps } from "@/components/GestureOverlay";
 import type { CountdownOverlayProps } from "@/components/CountdownOverlay";
 import type { PuzzleBoardProps } from "@/components/PuzzleBoard";
+import type { WinScreenProps } from "@/components/WinScreen";
 import { usePuzzle } from "@/hooks/usePuzzle";
 
 const CameraView = dynamic<CameraViewProps>(
@@ -24,70 +26,199 @@ const PuzzleBoard = dynamic<PuzzleBoardProps>(
   () => import("@/components/PuzzleBoard"),
   { ssr: false },
 );
+const WinScreen = dynamic<WinScreenProps>(
+  () => import("@/components/WinScreen"),
+  { ssr: false },
+);
 
-type Stage = "camera" | "countdown" | "puzzle";
+type Stage = "camera" | "countdown" | "puzzle" | "win";
 
-const GRID_SIZE = 3;
+function GameContent() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const gridSize = Math.min(
+    5,
+    Math.max(3, Number(searchParams.get("grid") ?? 3)),
+  );
 
-export default function GamePage() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const resetGestureRef = useRef<(() => void) | null>(null);
   const [stage, setStage] = useState<Stage>("camera");
   const { puzzle, generate, swapTiles, reset: resetPuzzle } = usePuzzle();
 
-  const handleSnap = useCallback(() => {
-    setStage("countdown");
+  // Stats
+  const [moves, setMoves] = useState(0);
+  const [seconds, setSeconds] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const startTimer = useCallback(() => {
+    setSeconds(0);
+    timerRef.current = setInterval(() => setSeconds((s) => s + 1), 1000);
   }, []);
 
+  const stopTimer = useCallback(() => {
+    if (timerRef.current) clearInterval(timerRef.current);
+  }, []);
+
+  useEffect(() => () => stopTimer(), [stopTimer]);
+
+  const handleSnap = useCallback(() => setStage("countdown"), []);
+
   const handleCountdownComplete = useCallback(() => {
-    if (videoRef.current) generate(videoRef.current, GRID_SIZE);
+    if (videoRef.current) generate(videoRef.current, gridSize);
+    setMoves(0);
+    startTimer();
     setStage("puzzle");
-  }, [generate]);
+  }, [generate, gridSize, startTimer]);
+
+  const handleSwap = useCallback(
+    (a: number, b: number) => {
+      swapTiles(a, b);
+      setMoves((m) => m + 1);
+    },
+    [swapTiles],
+  );
+
+  // Watch for solve
+  useEffect(() => {
+    if (puzzle?.solved) {
+      stopTimer();
+      setTimeout(() => setStage("win"), 300);
+    }
+  }, [puzzle?.solved, stopTimer]);
 
   const handleRetake = useCallback(() => {
     resetPuzzle();
     resetGestureRef.current?.();
+    stopTimer();
+    setMoves(0);
+    setSeconds(0);
     setStage("camera");
-  }, [resetPuzzle]);
+  }, [resetPuzzle, stopTimer]);
+
+  const handlePlayAgain = useCallback(() => {
+    resetPuzzle();
+    resetGestureRef.current?.();
+    stopTimer();
+    setMoves(0);
+    setSeconds(0);
+    setStage("camera");
+  }, [resetPuzzle, stopTimer]);
+
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  const timeStr =
+    mins > 0 ? `${mins}:${String(secs).padStart(2, "0")}` : `${secs}s`;
 
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center gap-6 px-4 py-10">
-      <h2 className="text-3xl font-bold">
-        Snap<span className="text-indigo-400">zule</span>
-      </h2>
+    <main className="min-h-screen flex flex-col items-center justify-start p-4 md:p-8 relative overflow-hidden">
+      {/* Dot Pattern Background */}
+      <div
+        className="pointer-events-none absolute inset-0 opacity-10"
+        style={{
+          backgroundImage: `radial-gradient(#000 2px, transparent 2px)`,
+          backgroundSize: "24px 24px",
+        }}
+      />
 
-      {/* Camera + countdown */}
-      {(stage === "camera" || stage === "countdown") && (
-        <div className="relative w-[640px] max-w-full aspect-video rounded-2xl overflow-hidden bg-gray-800 border border-gray-700">
-          <CameraView
-            onStreamReady={(v) => {
-              (videoRef as React.MutableRefObject<HTMLVideoElement>).current =
-                v;
-            }}
-          />
-          {stage === "camera" && (
-            <GestureOverlay
-              videoRef={videoRef}
-              onSnap={handleSnap}
-              onReset={(fn: () => void) => {
-                resetGestureRef.current = fn;
-              }}
-            />
-          )}
-          {stage === "countdown" && (
-            <CountdownOverlay onComplete={handleCountdownComplete} />
+      {/* Top Command Bar */}
+      <div className="w-full max-w-5xl brutal-box bg-white p-4 mb-8 flex flex-col md:flex-row items-center justify-between gap-4 z-10">
+        <button
+          onClick={() => router.push("/")}
+          className="brutal-btn bg-yellow text-sm px-6 py-2 whitespace-nowrap"
+        >
+          ← BACK TO MENU
+        </button>
+
+        <h1 className="brutal-heading text-4xl hidden md:flex gap-2">
+          <span className="bg-black text-white px-2 transform -rotate-2">
+            SNAP
+          </span>
+          <span className="bg-purple text-white px-2 transform rotate-2">
+            ZULE
+          </span>
+        </h1>
+
+        {/* Live stats space (keeps layout stable even when empty) */}
+        <div className="flex gap-4 min-w-[200px] justify-end">
+          {stage === "puzzle" ? (
+            <>
+              <div className="border-4 border-black px-4 py-1 bg-gray-100 font-bold shadow-[3px_3px_0px_0px_#000]">
+                MOVES: <span className="text-red text-lg">{moves}</span>
+              </div>
+              <div className="border-4 border-black px-4 py-1 bg-gray-100 font-bold shadow-[3px_3px_0px_0px_#000]">
+                TIME: <span className="text-purple text-lg">{timeStr}</span>
+              </div>
+            </>
+          ) : (
+            <div className="border-4 border-black px-4 py-1 bg-gray-200 text-gray-400 font-bold shadow-[3px_3px_0px_0px_#000] border-dashed">
+              AWAITING SNAP...
+            </div>
           )}
         </div>
-      )}
+      </div>
 
-      {/* Puzzle board */}
-      {stage === "puzzle" && puzzle && (
-        <PuzzleBoard
-          puzzle={puzzle}
-          onSwap={swapTiles}
-          onRetake={handleRetake}
-        />
-      )}
+      {/* Game Area Container */}
+      <div className="w-full max-w-5xl flex-grow flex items-center justify-center z-10">
+        {/* Camera — always mounted but hidden dynamically */}
+        <div
+          className={`relative w-full aspect-video brutal-box p-1 bg-white
+            ${stage === "camera" ? "border-black" : ""}
+            ${stage === "countdown" ? "border-red scale-[1.02] transition-transform duration-300" : ""}
+            ${stage === "puzzle" || stage === "win" ? "hidden" : "block"}
+          `}
+        >
+          {/* Black inner frame for the video */}
+          <div className="w-full h-full bg-black relative overflow-hidden border-2 border-black">
+            <CameraView
+              onStreamReady={(v) => {
+                (videoRef as React.MutableRefObject<HTMLVideoElement>).current =
+                  v;
+              }}
+            />
+            {stage === "camera" && (
+              <GestureOverlay
+                videoRef={videoRef}
+                onSnap={handleSnap}
+                onReset={(fn: () => void) => {
+                  resetGestureRef.current = fn;
+                }}
+              />
+            )}
+            {stage === "countdown" && (
+              <CountdownOverlay onComplete={handleCountdownComplete} />
+            )}
+          </div>
+        </div>
+
+        {/* Puzzle / Win Screen */}
+        {(stage === "puzzle" || stage === "win") &&
+          puzzle &&
+          (stage === "win" ? (
+            <WinScreen
+              moves={moves}
+              seconds={seconds}
+              gridSize={gridSize}
+              onPlayAgain={handlePlayAgain}
+              onRetake={handleRetake}
+            />
+          ) : (
+            <PuzzleBoard
+              puzzle={puzzle}
+              videoRef={videoRef}
+              onSwap={handleSwap}
+              onRetake={handleRetake}
+            />
+          ))}
+      </div>
     </main>
+  );
+}
+
+export default function GamePage() {
+  return (
+    <Suspense>
+      <GameContent />
+    </Suspense>
   );
 }

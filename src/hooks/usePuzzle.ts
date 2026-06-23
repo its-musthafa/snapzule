@@ -32,13 +32,12 @@ export function usePuzzle() {
 
   const generate = useCallback(
     (video: HTMLVideoElement, gridSize: number = 3) => {
-      // Capture frame to canvas
       const canvas = document.createElement("canvas");
       canvas.width = video.videoWidth || 640;
       canvas.height = video.videoHeight || 480;
-      const ctx = canvas.getContext("2d")!;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
 
-      // Mirror horizontally to match the mirrored video display
+      // Mirror horizontally
       ctx.translate(canvas.width, 0);
       ctx.scale(-1, 1);
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
@@ -51,7 +50,6 @@ export function usePuzzle() {
         currentIndex: i,
       }));
 
-      // Keep shuffling until not accidentally solved
       let shuffled: Tile[];
       do {
         shuffled = shuffle(ordered).map((t, idx) => ({

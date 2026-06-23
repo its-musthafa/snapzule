@@ -11,6 +11,8 @@ export interface PuzzleTileProps {
   onDragStart: (index: number) => void;
   onDrop: (index: number) => void;
   isSolved: boolean;
+  isGestureHover?: boolean;
+  isGestureDragging?: boolean;
 }
 
 export default function PuzzleTile({
@@ -21,6 +23,8 @@ export default function PuzzleTile({
   onDragStart,
   onDrop,
   isSolved,
+  isGestureHover,
+  isGestureDragging,
 }: PuzzleTileProps) {
   const dragOver = useRef(false);
 
@@ -28,13 +32,6 @@ export default function PuzzleTile({
   const origRow = Math.floor(tile.id / gridSize);
   const origCol = tile.id % gridSize;
 
-  // Use calc() to shift background by exact tile-sized offsets.
-  // Each tile is (100/gridSize)% of the container wide/tall.
-  // background-position shifts in terms of the container size:
-  // shift = origCol * (100/gridSize)% of container = origCol * (1/gridSize) * containerWidth
-  // Expressed as calc: `calc(origCol * 100% / gridSize)`  ... but since bg-size is gridSize*100%,
-  // we need the shift to be origCol tile-widths. One tile-width in bg-pos units = 100/(gridSize-1)%.
-  // Safest: use pixel calc via container-relative units.
   const bgPosX = `calc(${origCol} * 100% / ${gridSize - 1 || 1})`;
   const bgPosY = `calc(${origRow} * 100% / ${gridSize - 1 || 1})`;
 
@@ -57,10 +54,24 @@ export default function PuzzleTile({
         onDrop(currentIndex);
       }}
       className={`
-        relative w-full aspect-square rounded-sm cursor-grab active:cursor-grabbing
-        transition-all duration-200 select-none
-        ${isCorrect && !isSolved ? "ring-2 ring-green-400/60" : ""}
-        ${isSolved ? "cursor-default" : "hover:brightness-110"}
+        relative w-full aspect-square cursor-grab active:cursor-grabbing
+        transition-all duration-200 select-none bg-white
+        ${isCorrect && !isSolved ? "ring-4 ring-inset ring-green-500" : ""}
+        ${
+          isGestureDragging
+            ? "scale-90 ring-4 ring-inset ring-[var(--brutal-purple)] shadow-[8px_8px_0px_0px_#000] z-20 brightness-110"
+            : ""
+        }
+        ${
+          isGestureHover && !isGestureDragging
+            ? "ring-4 ring-inset ring-[var(--brutal-yellow)] z-10"
+            : ""
+        }
+        ${
+          isSolved
+            ? "cursor-default"
+            : "hover:ring-4 hover:ring-inset hover:ring-black hover:z-10"
+        }
       `}
       style={{
         backgroundImage: `url(${imageDataUrl})`,
@@ -69,10 +80,12 @@ export default function PuzzleTile({
         backgroundRepeat: "no-repeat",
       }}
     >
-      {/* Subtle tile number (dev aid, remove in Phase 6) */}
-      <span className="absolute bottom-1 right-1 text-[10px] text-white/30 font-mono select-none">
-        {tile.id}
-      </span>
+      {/* Subtle tile number (dev aid, keep it brutalist if visible) */}
+      {!isSolved && (
+        <span className="absolute bottom-1 right-1 bg-black text-white px-1 text-[10px] font-bold select-none border border-black">
+          {tile.id}
+        </span>
+      )}
     </div>
   );
 }

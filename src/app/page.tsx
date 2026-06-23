@@ -1,23 +1,113 @@
-import Link from "next/link";
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+
+const GRID_OPTIONS = [
+  { size: 3, label: "3×3", sub: "EASY" },
+  { size: 4, label: "4×4", sub: "MEDIUM" },
+  { size: 5, label: "5×5", sub: "HARD" },
+];
 
 export default function Home() {
+  const [selected, setSelected] = useState(3);
+  const router = useRouter();
+
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center px-4 text-center">
-      <h1 className="text-5xl font-bold tracking-tight mb-4">
-        Snap<span className="text-indigo-400">zule</span>
-      </h1>
-      <p className="text-gray-400 text-lg max-w-md mb-8">
-        Strike a pose, snap a selfie, and solve yourself as a puzzle. How fast
-        can you do it?
-      </p>
-      <Link
-        href="/game"
-        className="bg-indigo-500 hover:bg-indigo-600 transition-colors text-white font-semibold px-8 py-3 rounded-2xl text-lg"
-      >
-        Play Now 🎮
-      </Link>
-      <p className="mt-6 text-gray-600 text-sm">
-        No sign-up. No install. Just your camera.
+    <main className="min-h-screen flex flex-col items-center justify-center px-4 py-12 gap-12 relative overflow-hidden">
+      {/* Brutalist Dot Pattern Background */}
+      <div
+        className="pointer-events-none absolute inset-0 opacity-10"
+        style={{
+          backgroundImage: `radial-gradient(#000 2px, transparent 2px)`,
+          backgroundSize: "24px 24px",
+        }}
+      />
+
+      {/* Title Section */}
+      <div className="flex flex-col items-center gap-4 text-center z-10">
+        <p className="font-bold text-black border-2 border-black px-3 py-1 bg-white uppercase tracking-widest text-xs shadow-[2px_2px_0px_0px_#000]">
+          Insert Coin
+        </p>
+        <h1 className="brutal-heading text-6xl sm:text-8xl flex flex-wrap justify-center gap-3 mt-2">
+          <span className="bg-yellow text-black px-6 py-2 border-4 border-black shadow-[6px_6px_0px_0px_#000] transform -rotate-2">
+            SNAP
+          </span>
+          <span className="bg-purple text-white px-6 py-2 border-4 border-black shadow-[6px_6px_0px_0px_#000] transform rotate-2">
+            ZULE
+          </span>
+        </h1>
+        <p className="font-bold text-black text-sm tracking-widest uppercase mt-4 bg-white border-2 border-black px-4 py-2 transform -rotate-1">
+          Snap · Shuffle · Solve
+        </p>
+      </div>
+
+      {/* Main Content Row */}
+      <div className="flex flex-col md:flex-row items-stretch gap-8 w-full max-w-4xl z-10">
+        {/* How to play */}
+        <div className="brutal-box flex-1 p-6 transform rotate-1 flex flex-col justify-center">
+          <h2 className="brutal-heading text-3xl mb-4 border-b-4 border-black pb-2">
+            HOW TO PLAY
+          </h2>
+          <div className="flex flex-col gap-4 font-bold text-sm">
+            <p className="flex items-center gap-3">
+              <span className="bg-yellow border-2 border-black p-2 text-xl shadow-[2px_2px_0px_0px_#000]">
+                ✋
+              </span>
+              Show open palm to snap selfie
+            </p>
+            <p className="flex items-center gap-3">
+              <span className="bg-blue-400 text-white border-2 border-black p-2 text-xl shadow-[2px_2px_0px_0px_#000]">
+                👌
+              </span>
+              Pinch to grab & drag tiles
+            </p>
+            <p className="flex items-center gap-3">
+              <span className="bg-red border-2 border-black p-2 text-xl shadow-[2px_2px_0px_0px_#000]">
+                🏆
+              </span>
+              Solve the puzzle to win!
+            </p>
+          </div>
+        </div>
+
+        {/* Controls / Start Game */}
+        <div className="brutal-box flex-1 p-6 transform -rotate-1 flex flex-col justify-between">
+          <div className="flex flex-col items-center gap-4 w-full">
+            <p className="brutal-heading text-2xl border-b-4 border-black w-full text-center pb-2">
+              SELECT DIFFICULTY
+            </p>
+            <div className="flex w-full gap-2 justify-center">
+              {GRID_OPTIONS.map(({ size, label, sub }) => (
+                <button
+                  key={size}
+                  onClick={() => setSelected(size)}
+                  className={`brutal-btn flex-col gap-1 w-24 ${
+                    selected === size
+                      ? "bg-purple text-white shadow-[0px_0px_0px_0px_#000] translate-y-1 translate-x-1"
+                      : "bg-white text-black hover:bg-gray-100"
+                  }`}
+                >
+                  <span className="text-xl brutal-heading">{label}</span>
+                  <span className="text-[10px] tracking-wider">{sub}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Play button */}
+          <button
+            onClick={() => router.push(`/game?grid=${selected}`)}
+            className="brutal-btn bg-red text-white w-full text-2xl py-4 mt-8"
+          >
+            PLAY NOW
+          </button>
+        </div>
+      </div>
+
+      {/* Footer Tag */}
+      <p className="font-bold text-black text-xs tracking-widest mt-8 bg-yellow border-2 border-black px-4 py-2 z-10 shadow-[2px_2px_0px_0px_#000]">
+        NO SIGN-UP · NO INSTALL · JUST YOUR CAMERA
       </p>
     </main>
   );

@@ -8,26 +8,32 @@ interface UseMediaPipeOptions {
   videoRef: React.RefObject<HTMLVideoElement | null>;
   canvasRef: React.RefObject<HTMLCanvasElement | null>;
   onSnap: () => void;
-  holdDurationMs?: number; // how long to hold palm before snap (default 2000ms)
+  holdDurationMs?: number;
 }
 
-// Checks if a hand landmark result looks like an open palm
-// All 5 fingertips must be above their respective MCP joints (extended)
+// Improved Open Palm Detection: Uses distance to wrist so it works even if hand is tilted/upside down
 function isOpenPalm(landmarks: { x: number; y: number; z: number }[]): boolean {
-  // Finger tip indices:   thumb=4, index=8, middle=12, ring=16, pinky=20
-  // Finger MCP indices:   thumb=2, index=5, middle=9,  ring=13, pinky=17
-  const fingers = [
-    [8, 6], // index: tip, pip
-    [12, 10], // middle
-    [16, 14], // ring
-    [20, 18], // pinky
-  ];
+  const wrist = landmarks[0];
+  const tips = [8, 12, 16, 20];
+  const mcps = [5, 9, 13, 17];
 
-  // In normalized coords, y increases downward, so tip.y < pip.y means finger is extended
-  const extended = fingers.filter(
-    ([tip, pip]) => landmarks[tip].y < landmarks[pip].y,
-  );
-  return extended.length >= 4; // at least 4 fingers extended
+  let extendedFingers = 0;
+  for (let i = 0; i < 4; i++) {
+    const tipDist = Math.hypot(
+      landmarks[tips[i]].x - wrist.x,
+      landmarks[tips[i]].y - wrist.y,
+    );
+    const mcpDist = Math.hypot(
+      landmarks[mcps[i]].x - wrist.x,
+      landmarks[mcps[i]].y - wrist.y,
+    );
+
+    // Fingertip should be significantly further from the wrist than the knuckle is
+    if (tipDist > mcpDist * 1.25) {
+      extendedFingers++;
+    }
+  }
+  return extendedFingers >= 4;
 }
 
 export function useMediaPipe({
@@ -60,7 +66,6 @@ export function useMediaPipe({
     let cancelled = false;
 
     async function init() {
-      // Dynamically import so it's always client-side only
       const { Hands } = await import("@mediapipe/hands");
 
       const hands = new Hands({
@@ -72,7 +77,7 @@ export function useMediaPipe({
         maxNumHands: 1,
         modelComplexity: 1,
         minDetectionConfidence: 0.7,
-        minTrackingConfidence: 0.5,
+        minTrackingConfidence: 0.75, // High calibration
       });
 
       hands.onResults(
@@ -86,7 +91,6 @@ export function useMediaPipe({
           const ctx = canvas?.getContext("2d");
           if (!canvas || !ctx) return;
 
-          // Clear canvas
           ctx.clearRect(0, 0, canvas.width, canvas.height);
 
           const hasHand =
@@ -96,7 +100,7 @@ export function useMediaPipe({
 
           const now = Date.now();
 
-          if (snapFiredRef.current) return; // already snapped, wait for reset
+          if (snapFiredRef.current) return;
 
           if (palmOpen) {
             if (!holdStartRef.current) {
@@ -107,38 +111,36 @@ export function useMediaPipe({
             const elapsed = now - holdStartRef.current;
             const progress = Math.min(elapsed / holdDurationMs, 1);
 
-            // Draw progress arc on canvas
             const cx = canvas.width / 2;
-            const cy = 60;
-            const radius = 36;
+            const cy = 80;
+            const size = 60;
 
+            // Draw Brutalist Loading Block instead of an arc
             ctx.save();
-            ctx.strokeStyle = "#6366f1";
-            ctx.lineWidth = 6;
-            ctx.lineCap = "round";
-            ctx.beginPath();
-            ctx.arc(
-              cx,
-              cy,
-              radius,
-              -Math.PI / 2,
-              -Math.PI / 2 + 2 * Math.PI * progress,
-            );
-            ctx.stroke();
+            ctx.translate(cx, cy);
 
-            // Background arc
-            ctx.globalAlpha = 0.2;
-            ctx.strokeStyle = "#6366f1";
-            ctx.beginPath();
-            ctx.arc(cx, cy, radius, 0, 2 * Math.PI);
-            ctx.stroke();
+            // Background box
+            ctx.fillStyle = "#ffffff";
+            ctx.strokeStyle = "#000000";
+            ctx.lineWidth = 4;
+            ctx.fillRect(-size / 2, -size / 2, size, size);
+            ctx.strokeRect(-size / 2, -size / 2, size, size);
+
+            // Fill box (purple) indicating progress
+            const fillHeight = size * progress;
+            ctx.fillStyle = "#a855f7"; // var(--brutal-purple)
+            ctx.fillRect(-size / 2, size / 2 - fillHeight, size, fillHeight);
+
             ctx.restore();
 
             // Label
-            ctx.fillStyle = "#ffffff";
-            ctx.font = "bold 14px sans-serif";
+            ctx.fillStyle = "#000000";
+            ctx.strokeStyle = "#ffffff";
+            ctx.lineWidth = 3;
+            ctx.font = "bold 20px sans-serif";
             ctx.textAlign = "center";
-            ctx.fillText("Hold still ✋", cx, cy + radius + 20);
+            ctx.strokeText("HOLD STILL", cx, cy + size + 20);
+            ctx.fillText("HOLD STILL", cx, cy + size + 20);
 
             if (elapsed >= holdDurationMs) {
               snapFiredRef.current = true;
@@ -149,14 +151,6 @@ export function useMediaPipe({
             holdStartRef.current = null;
             if (!snapFiredRef.current) {
               setGestureState(hasHand ? "detecting" : "idle");
-            }
-
-            // Show hand icon hint if no hand
-            if (!hasHand) {
-              ctx.fillStyle = "rgba(255,255,255,0.15)";
-              ctx.font = "bold 16px sans-serif";
-              ctx.textAlign = "center";
-              ctx.fillText("✋ Show open palm to snap", canvas.width / 2, 40);
             }
           }
         },
