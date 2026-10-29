@@ -136,7 +136,9 @@ export const snapzuleSubmitRun = onCall(
           photoURL: entry.photoURL,
           moves,
           timeMs,
-          swaps,
+          // Firestore rejects nested arrays ([[a,b],...]) — store flat [a,b,a,b,...].
+          // Client getGhost() pairs them back up.
+          swaps: swaps.flat(),
         };
       }
       tx.set(dailyRef, update, { merge: true });

@@ -62,8 +62,15 @@ export async function getGhost(seed: string): Promise<Ghost | null> {
   try {
     const snap = await getDoc(doc(db, "snapzule_daily", seed));
     if (!snap.exists()) return null;
-    const ghost = (snap.data() as DailyBoard).ghost;
-    return ghost ?? null;
+    // Stored flat ([a,b,a,b,...]) because Firestore forbids nested arrays.
+    const ghost = (snap.data() as { ghost?: Omit<Ghost, "swaps"> & { swaps: number[] } })
+      .ghost;
+    if (!ghost) return null;
+    const swaps: Swap[] = [];
+    for (let i = 0; i + 1 < ghost.swaps.length; i += 2) {
+      swaps.push([ghost.swaps[i], ghost.swaps[i + 1]]);
+    }
+    return { ...ghost, swaps };
   } catch {
     return null;
   }
