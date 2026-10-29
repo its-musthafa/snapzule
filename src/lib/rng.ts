@@ -22,11 +22,15 @@ export function hashSeed(str: string): number {
   return h >>> 0;
 }
 
-/** Today's date as a stable seed string, e.g. "2026-06-23" (local time). */
+/**
+ * Today's date as a stable seed string, e.g. "2026-06-24" — in **UTC** so the
+ * daily challenge + global leaderboard are the same scramble worldwide and
+ * match the server's `dateSeed` (functions/src/rng.ts).
+ */
 export function todaySeed(): string {
   const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
 }

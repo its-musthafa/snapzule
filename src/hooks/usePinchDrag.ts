@@ -1,7 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { isFist, isPeace } from "@/lib/gestures";
+import { isFist, isOpenHand, isPeace } from "@/lib/gestures";
+
+// How long a grab survives momentary tracking loss (motion blur on fast drags)
+// before it's released. Reacquiring the hand within this window continues the
+// drag seamlessly.
+const GRACE_MS = 300;
 
 export interface PinchState {
   isPinching: boolean; // We kept the name so it doesn't break PuzzleBoard, but it's actually "isFist" now!
@@ -46,11 +51,19 @@ export function usePinchDrag({
 
   const animFrameRef = useRef<number | null>(null);
   const handsRef = useRef<unknown>(null);
+  const sendingRef = useRef(false);
+  // Timestamp of the last frame a hand was actually seen — drives the grace window.
+  const lastSeenRef = useRef(0);
 
   // Latest onPeace + a cooldown so one ✌️ fires a single hint.
   const onPeaceRef = useRef(onPeace);
   onPeaceRef.current = onPeace;
   const lastPeaceRef = useRef(0);
+
+  // Keep onSwap in a ref so an unstable callback doesn't tear down and
+  // rebuild the MediaPipe instance (CDN reload + crash risk) mid-game.
+  const onSwapRef = useRef(onSwap);
+  onSwapRef.current = onSwap;
 
   const getGridIndex = useCallback(
     (x: number, y: number): number => {
@@ -74,12 +87,15 @@ export function usePinchDrag({
       send: (o: { image: HTMLVideoElement }) => Promise<void>;
     } | null;
 
-    if (!video || !hands || video.readyState < 2 || !enabled) {
+    if (!video || !hands || video.readyState < 2 || !enabled || sendingRef.current) {
       animFrameRef.current = requestAnimationFrame(processFrame);
       return;
     }
 
-    hands.send({ image: video }).then(() => {
+    // Serialize sends — overlapping send() calls abort the MediaPipe wasm.
+    sendingRef.current = true;
+    hands.send({ image: video }).finally(() => {
+      sendingRef.current = false;
       animFrameRef.current = requestAnimationFrame(processFrame);
     });
   }, [videoRef, enabled]);
@@ -100,7 +116,10 @@ export function usePinchDrag({
         maxNumHands: 1,
         modelComplexity: 1,
         minDetectionConfidence: 0.7,
-        minTrackingConfidence: 0.75, // Increased to prevent high-lighting jitter
+        // Lowered from 0.75: this governs frame-to-frame *persistence*. A high
+        // value made MediaPipe drop the hand on motion blur during fast drags.
+        // 0.5 holds the track through blur; detection (initial pickup) stays 0.7.
+        minTrackingConfidence: 0.5,
       });
 
       hands.onResults(
@@ -120,10 +139,42 @@ export function usePinchDrag({
             pipCtx.restore();
           }
 
+          // Brutalist square cursor on the PiP (shared by the live + grace paths).
+          const drawCursor = (cx: number, cy: number, active: boolean) => {
+            if (!pip || !pipCtx) return;
+            const drawX = pip.width - cx * pip.width; // un-mirror for canvas
+            const drawY = cy * pip.height;
+            pipCtx.fillStyle = active ? "#a855f7" : "#ffcc00"; // purple grab / yellow hover
+            pipCtx.strokeStyle = "#000000";
+            pipCtx.lineWidth = 2;
+            const size = active ? 12 : 16;
+            pipCtx.fillRect(drawX - size / 2, drawY - size / 2, size, size);
+            pipCtx.strokeRect(drawX - size / 2, drawY - size / 2, size, size);
+          };
+
           const landmarks = results.multiHandLandmarks?.[0];
           const prev = stateRef.current;
+          const now = performance.now();
 
           if (!landmarks) {
+            // A: grace window — a mid-drag grab survives brief tracking loss.
+            if (prev.isPinching && prev.dragFromIndex !== null) {
+              if (now - lastSeenRef.current <= GRACE_MS) {
+                // Hold the grab; freeze the cursor where it was last seen.
+                if (prev.handX !== null && prev.handY !== null) {
+                  drawCursor(prev.handX, prev.handY, true);
+                }
+                return;
+              }
+              // Grace expired mid-air → commit the intended move to the last
+              // hovered slot rather than silently dropping it.
+              if (
+                prev.hoverIndex !== null &&
+                prev.hoverIndex !== prev.dragFromIndex
+              ) {
+                onSwapRef.current(prev.dragFromIndex, prev.hoverIndex);
+              }
+            }
             if (prev.isPinching || prev.dragFromIndex !== null) {
               updateState({
                 isPinching: false,
@@ -136,9 +187,10 @@ export function usePinchDrag({
             return;
           }
 
+          lastSeenRef.current = now;
+
           // ✌️ peace sign → hint peek (cooldown-gated to one fire per gesture)
           if (isPeace(landmarks)) {
-            const now = performance.now();
             if (now - lastPeaceRef.current > 3000) {
               lastPeaceRef.current = now;
               onPeaceRef.current?.();
@@ -161,24 +213,15 @@ export function usePinchDrag({
               ? prev.handY + (rawCursorY - prev.handY) * smoothFactor
               : rawCursorY;
 
-          // Use our new robust Fist detection
-          const grabbing = isFist(landmarks);
+          // C: latched grab — start only on a clear fist, but once grabbing,
+          // release only on a clear open hand. Ambiguous/transitional frames
+          // mid-drag keep the current state instead of dropping the tile.
+          const grabbing = prev.isPinching
+            ? !isOpenHand(landmarks)
+            : isFist(landmarks);
           const hoverIndex = getGridIndex(cursorX, cursorY);
 
-          // Draw brutalist cursor on PiP
-          if (pip && pipCtx) {
-            const drawX = pip.width - cursorX * pip.width; // Un-mirror for canvas drawing
-            const drawY = cursorY * pip.height;
-
-            pipCtx.fillStyle = grabbing ? "#a855f7" : "#ffcc00"; // Brutalist Purple or Yellow
-            pipCtx.strokeStyle = "#000000";
-            pipCtx.lineWidth = 2;
-
-            // Draw a blocky square cursor instead of a circle
-            const size = grabbing ? 12 : 16;
-            pipCtx.fillRect(drawX - size / 2, drawY - size / 2, size, size);
-            pipCtx.strokeRect(drawX - size / 2, drawY - size / 2, size, size);
-          }
+          drawCursor(cursorX, cursorY, grabbing);
 
           if (grabbing && !prev.isPinching) {
             updateState({
@@ -193,7 +236,7 @@ export function usePinchDrag({
               prev.dragFromIndex !== null &&
               hoverIndex !== prev.dragFromIndex
             ) {
-              onSwap(prev.dragFromIndex, hoverIndex);
+              onSwapRef.current(prev.dragFromIndex, hoverIndex);
             }
             updateState({
               isPinching: false,
@@ -225,8 +268,10 @@ export function usePinchDrag({
     return () => {
       cancelled = true;
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+      (handsRef.current as { close?: () => void } | null)?.close?.();
+      handsRef.current = null;
     };
-  }, [enabled, pipCanvasRef, getGridIndex, onSwap, updateState, processFrame]);
+  }, [enabled, pipCanvasRef, getGridIndex, updateState, processFrame]);
 
   return { pinchState };
 }

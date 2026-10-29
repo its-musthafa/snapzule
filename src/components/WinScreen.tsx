@@ -1,9 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { getBest, type BestScore } from "@/lib/scores";
 import { downloadWinCard } from "@/lib/wincard";
 import { useThumbsUp } from "@/hooks/useThumbsUp";
+import { submitRun, type SubmitResult } from "@/lib/leaderboard";
+import { buildReplayUrl } from "@/lib/replayCodec";
+import type { PuzzleRun } from "@/lib/run";
 
 export interface WinScreenProps {
   moves: number;
@@ -14,9 +18,15 @@ export interface WinScreenProps {
   records: { bestMoves: boolean; bestTime: boolean };
   videoRef: React.RefObject<HTMLVideoElement | null>;
   gestureEnabled: boolean;
+  /** The captured run for this solve (powers replay sharing). */
+  run?: PuzzleRun | null;
+  /** Whether this solve is eligible for the daily leaderboard. */
+  dailyEligible?: boolean;
   onPlayAgain: () => void;
   onRetake: () => void;
 }
+
+type SubmitStage = "idle" | "working" | "done" | "error";
 
 function fmtTime(seconds: number): string {
   const mins = Math.floor(seconds / 60);
@@ -33,13 +43,19 @@ export default function WinScreen({
   records,
   videoRef,
   gestureEnabled,
+  run,
+  dailyEligible,
   onPlayAgain,
   onRetake,
 }: WinScreenProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [best, setBest] = useState<BestScore | null>(null);
   const [copied, setCopied] = useState(false);
+  const [copiedReplay, setCopiedReplay] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [submit, setSubmit] = useState<SubmitStage>("idle");
+  const [submitResult, setSubmitResult] = useState<SubmitResult | null>(null);
+  const [submitError, setSubmitError] = useState<string>("");
 
   // 👍 thumbs-up → play again (reuses the live camera stream).
   useThumbsUp({
@@ -65,12 +81,55 @@ export default function WinScreen({
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleShareReplay = async () => {
+    if (!run) return;
+    const url = buildReplayUrl(
+      window.location.origin,
+      run.seed,
+      run.grid,
+      run.swaps,
+    );
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      window.prompt("Copy this replay link:", url);
+    }
+    setCopiedReplay(true);
+    setTimeout(() => setCopiedReplay(false), 2000);
+  };
+
   const handleDownload = async () => {
     setSaving(true);
     try {
       await downloadWinCard({ imageDataUrl, gridSize, moves, seconds });
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!run) return;
+    setSubmit("working");
+    setSubmitError("");
+    try {
+      // Sign-in is prompted lazily inside the leaderboard flow on first submit.
+      const { signInWithGoogle, auth, track } = await import(
+        "@/lib/firebase/client"
+      );
+      if (!auth.currentUser) await signInWithGoogle();
+      const result = await submitRun(run);
+      setSubmitResult(result);
+      setSubmit("done");
+      track("leaderboard_submit", {
+        grid: run.grid,
+        moves: run.moves,
+        rank: result.rank ?? -1,
+      });
+    } catch (err) {
+      setSubmit("error");
+      setSubmitError(
+        err instanceof Error ? err.message : "Could not submit — try again.",
+      );
     }
   };
 
@@ -222,7 +281,55 @@ export default function WinScreen({
         >
           {saving ? "SAVING..." : "💾 SAVE CARD"}
         </button>
+        {run && (
+          <button
+            onClick={handleShareReplay}
+            className="brutal-btn bg-black text-white text-xl md:text-2xl py-4 px-8 border-4 border-black shadow-[6px_6px_0px_0px_#000] transform hover:-rotate-2"
+          >
+            {copiedReplay ? "REPLAY COPIED!" : "▶ SHARE REPLAY"}
+          </button>
+        )}
       </div>
+
+      {/* Daily leaderboard — only when this run is eligible */}
+      {run && dailyEligible && (
+        <div className="flex flex-col items-center gap-3 z-20 bg-white border-4 border-black px-6 py-5 shadow-[6px_6px_0px_0px_#000] transform -rotate-1">
+          <p className="brutal-heading text-xl">📅 DAILY LEADERBOARD</p>
+          {submit === "done" && submitResult ? (
+            <>
+              <p className="font-bold text-center">
+                {submitResult.rank
+                  ? `You're #${submitResult.rank} of ${submitResult.count}!`
+                  : "Submitted! (outside the top 100)"}
+              </p>
+              <Link
+                href="/leaderboard"
+                className="brutal-btn bg-yellow text-black text-lg py-2 px-6 border-4 border-black shadow-[4px_4px_0px_0px_#000]"
+              >
+                VIEW BOARD →
+              </Link>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={handleSubmit}
+                disabled={submit === "working"}
+                className="brutal-btn bg-[var(--brutal-red)] text-white text-lg md:text-xl py-3 px-7 border-4 border-black shadow-[4px_4px_0px_0px_#000] transform hover:rotate-1 disabled:opacity-60"
+              >
+                {submit === "working" ? "SUBMITTING..." : "🏆 SUBMIT SCORE"}
+              </button>
+              {submit === "error" && (
+                <p className="font-bold text-[var(--brutal-red)] text-xs max-w-[260px] text-center">
+                  {submitError}
+                </p>
+              )}
+              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500 text-center max-w-[260px]">
+                Google sign-in · only your name shows · your selfie stays private
+              </p>
+            </>
+          )}
+        </div>
+      )}
 
       {gestureEnabled && (
         <p className="font-bold text-black text-xs uppercase tracking-widest bg-white border-2 border-black px-4 py-2 shadow-[2px_2px_0px_0px_#000] z-20">

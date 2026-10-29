@@ -36,6 +36,13 @@ export function isFist(lm: Landmark[]): boolean {
   return curled >= 3;
 }
 
+/** Open hand: at least 3 of the 4 fingers extended. Used to *release* a
+ *  latched grab — deliberately distinct from "not a fist" so transitional/
+ *  ambiguous frames mid-drag don't accidentally drop the tile. */
+export function isOpenHand(lm: Landmark[]): boolean {
+  return fingersExtended(lm).filter(Boolean).length >= 3;
+}
+
 /** Peace / victory: index + middle extended, ring + pinky curled. */
 export function isPeace(lm: Landmark[]): boolean {
   const [index, middle, ring, pinky] = fingersExtended(lm);

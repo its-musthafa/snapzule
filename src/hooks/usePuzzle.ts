@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useCallback, useRef } from "react";
-import { mulberry32, hashSeed } from "@/lib/rng";
 import { duotone } from "@/lib/image";
+import { scrambleBoard, type Swap } from "@/lib/puzzle";
 
 export interface Tile {
   id: number; // original position (0 = top-left)
@@ -22,50 +22,34 @@ export interface GenerateOpts {
   filter?: boolean; // duotone — wired in a later phase
 }
 
-function shuffle<T>(arr: T[], rng: () => number = Math.random): T[] {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(rng() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
-
 function isSolved(tiles: Tile[]): boolean {
   return tiles.every((t) => t.id === t.currentIndex);
 }
 
 export function usePuzzle() {
   const [puzzle, setPuzzle] = useState<PuzzleState | null>(null);
-  // Swap history for undo: each entry is the pair of grid indices swapped.
-  const historyRef = useRef<[number, number][]>([]);
+  // Swap history for undo (LIFO — pops on undo): pairs of grid indices.
+  const historyRef = useRef<Swap[]>([]);
+  // Append-only log of EVERY applied swap, including undos. This is the
+  // replay/anti-cheat trail — never popped, so it always reproduces the
+  // final board via `replayBoard`.
+  const moveLogRef = useRef<Swap[]>([]);
 
   // Shared core: given a finished image data URL, scramble & set the puzzle.
   const buildPuzzle = useCallback(
     (imageDataUrl: string, gridSize: number, opts: GenerateOpts = {}) => {
-      const total = gridSize * gridSize;
-
-      const ordered: Tile[] = Array.from({ length: total }, (_, i) => ({
-        id: i,
-        currentIndex: i,
-      }));
-
       // Use the given seed (daily/shared) or mint a random one so every
       // puzzle is reproducible & shareable.
       const seed =
         opts.seed ?? Math.random().toString(36).slice(2, 8).toUpperCase();
-      const rng = mulberry32(hashSeed(seed));
 
-      let shuffled: Tile[];
-      do {
-        shuffled = shuffle(ordered, rng).map((t, idx) => ({
-          ...t,
-          currentIndex: idx,
-        }));
-      } while (isSolved(shuffled));
+      // Canonical scramble — identical to what the server replays.
+      const board = scrambleBoard(seed, gridSize);
+      const tiles: Tile[] = board.map((id, idx) => ({ id, currentIndex: idx }));
 
       historyRef.current = [];
-      setPuzzle({ imageDataUrl, tiles: shuffled, gridSize, solved: false, seed });
+      moveLogRef.current = [];
+      setPuzzle({ imageDataUrl, tiles, gridSize, solved: false, seed });
     },
     [],
   );
@@ -128,6 +112,7 @@ export function usePuzzle() {
       tiles[a] = { ...tiles[a], currentIndex: indexB };
       tiles[b] = { ...tiles[b], currentIndex: indexA };
       historyRef.current.push([indexA, indexB]);
+      moveLogRef.current.push([indexA, indexB]);
       const solved = isSolved(tiles);
       return { ...prev, tiles, solved };
     });
@@ -138,6 +123,9 @@ export function usePuzzle() {
     const last = historyRef.current.pop();
     if (!last) return false;
     const [indexA, indexB] = last;
+    // An undo is itself an applied swap of the same pair — record it so the
+    // append-only log still replays to the true final board.
+    moveLogRef.current.push([indexA, indexB]);
     setPuzzle((prev) => {
       if (!prev) return prev;
       const tiles = [...prev.tiles];
@@ -153,8 +141,20 @@ export function usePuzzle() {
 
   const reset = useCallback(() => {
     historyRef.current = [];
+    moveLogRef.current = [];
     setPuzzle(null);
   }, []);
 
-  return { puzzle, generate, generateFromImage, swapTiles, undo, reset };
+  /** Full ordered swap log for the current run (replay / anti-cheat). */
+  const getMoveLog = useCallback((): Swap[] => [...moveLogRef.current], []);
+
+  return {
+    puzzle,
+    generate,
+    generateFromImage,
+    swapTiles,
+    undo,
+    reset,
+    getMoveLog,
+  };
 }

@@ -47,17 +47,21 @@ export function useMediaPipe({
   const snapFiredRef = useRef(false);
   const handsRef = useRef<unknown>(null);
   const animFrameRef = useRef<number | null>(null);
+  const sendingRef = useRef(false);
 
   const processFrame = useCallback(() => {
     const video = videoRef.current;
     const hands = handsRef.current as {
       send: (o: { image: HTMLVideoElement }) => Promise<void>;
     } | null;
-    if (!video || !hands || video.readyState < 2) {
+    if (!video || !hands || video.readyState < 2 || sendingRef.current) {
       animFrameRef.current = requestAnimationFrame(processFrame);
       return;
     }
-    hands.send({ image: video }).then(() => {
+    // Serialize sends — overlapping send() calls abort the MediaPipe wasm.
+    sendingRef.current = true;
+    hands.send({ image: video }).finally(() => {
+      sendingRef.current = false;
       animFrameRef.current = requestAnimationFrame(processFrame);
     });
   }, [videoRef]);
@@ -167,6 +171,8 @@ export function useMediaPipe({
     return () => {
       cancelled = true;
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+      (handsRef.current as { close?: () => void } | null)?.close?.();
+      handsRef.current = null;
     };
   }, [canvasRef, holdDurationMs, onSnap, processFrame]);
 

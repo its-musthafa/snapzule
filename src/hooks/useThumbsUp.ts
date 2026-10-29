@@ -28,6 +28,7 @@ export function useThumbsUp({
   const handsRef = useRef<unknown>(null);
   const heldRef = useRef(0);
   const firedRef = useRef(false);
+  const sendingRef = useRef(false);
 
   useEffect(() => {
     if (!enabled) return;
@@ -38,11 +39,14 @@ export function useThumbsUp({
       const hands = handsRef.current as {
         send: (o: { image: HTMLVideoElement }) => Promise<void>;
       } | null;
-      if (!video || !hands || video.readyState < 2) {
+      if (!video || !hands || video.readyState < 2 || sendingRef.current) {
         animRef.current = requestAnimationFrame(processFrame);
         return;
       }
-      hands.send({ image: video }).then(() => {
+      // Serialize sends — overlapping send() calls abort the MediaPipe wasm.
+      sendingRef.current = true;
+      hands.send({ image: video }).finally(() => {
+        sendingRef.current = false;
         if (!cancelled) animRef.current = requestAnimationFrame(processFrame);
       });
     };
@@ -82,6 +86,8 @@ export function useThumbsUp({
     return () => {
       cancelled = true;
       if (animRef.current) cancelAnimationFrame(animRef.current);
+      (handsRef.current as { close?: () => void } | null)?.close?.();
+      handsRef.current = null;
     };
   }, [enabled, videoRef, holdFrames]);
 }

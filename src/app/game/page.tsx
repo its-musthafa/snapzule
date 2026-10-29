@@ -8,9 +8,12 @@ import type { GestureOverlayProps } from "@/components/GestureOverlay";
 import type { CountdownOverlayProps } from "@/components/CountdownOverlay";
 import type { PuzzleBoardProps } from "@/components/PuzzleBoard";
 import type { WinScreenProps } from "@/components/WinScreen";
+import type { GhostRaceProps } from "@/components/GhostRace";
 import { usePuzzle } from "@/hooks/usePuzzle";
 import { saveScore } from "@/lib/scores";
+import { todaySeed } from "@/lib/rng";
 import * as sfx from "@/lib/sfx";
+import type { PuzzleRun } from "@/lib/run";
 
 const CameraView = dynamic<CameraViewProps>(
   () => import("@/components/CameraView"),
@@ -30,6 +33,10 @@ const PuzzleBoard = dynamic<PuzzleBoardProps>(
 );
 const WinScreen = dynamic<WinScreenProps>(
   () => import("@/components/WinScreen"),
+  { ssr: false },
+);
+const GhostRace = dynamic<GhostRaceProps>(
+  () => import("@/components/GhostRace"),
   { ssr: false },
 );
 
@@ -67,6 +74,7 @@ function GameContent() {
     swapTiles,
     undo,
     reset: resetPuzzle,
+    getMoveLog,
   } = usePuzzle();
 
   // Stats
@@ -77,6 +85,10 @@ function GameContent() {
   const correctRef = useRef(0);
   const lastSeedRef = useRef<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // High-res clock for the run's timeMs (the 1s display timer is too coarse).
+  const startMsRef = useRef(0);
+  // Holds the captured run between solve and submission (Phase 2 wires the send).
+  const lastRunRef = useRef<PuzzleRun | null>(null);
 
   // Sync mute UI with stored preference on mount.
   useEffect(() => setMutedState(sfx.isMuted()), []);
@@ -90,6 +102,7 @@ function GameContent() {
 
   const startTimer = useCallback(() => {
     setSeconds(0);
+    startMsRef.current = performance.now();
     timerRef.current = setInterval(() => setSeconds((s) => s + 1), 1000);
   }, []);
 
@@ -118,6 +131,13 @@ function GameContent() {
       setStage("lose");
     }
   }, [attackMode, stage, seconds, budget, stopTimer]);
+
+  // Stable callback — an inline arrow would re-run CameraView's camera effect
+  // on every parent render (the 1s timer alone fires it every second),
+  // tearing down + re-acquiring the stream and crashing MediaPipe mid-game.
+  const handleStreamReady = useCallback((v: HTMLVideoElement) => {
+    (videoRef as React.MutableRefObject<HTMLVideoElement>).current = v;
+  }, []);
 
   const handleSnap = useCallback(() => {
     sfx.snap();
@@ -153,6 +173,22 @@ function GameContent() {
       stopTimer();
       sfx.win();
       setRecords(saveScore(gridSize, moves, seconds));
+
+      // Capture the verifiable run. Score = total swaps (undos included), which
+      // the server can replay-check directly. Held for Phase-2 submission.
+      const swaps = getMoveLog();
+      const run: PuzzleRun = {
+        seed: puzzle.seed,
+        grid: gridSize,
+        moves: swaps.length,
+        timeMs: Math.round(performance.now() - startMsRef.current),
+        swaps,
+        mode: attackMode ? "attack" : seed ? "seeded" : "normal",
+        createdAt: Date.now(),
+      };
+      lastRunRef.current = run;
+      console.info("[snapzule] run captured", run);
+
       setTimeout(() => setStage("win"), 300);
     }
     // moves/seconds intentionally captured at solve time
@@ -196,6 +232,12 @@ function GameContent() {
     setIsUpload(false);
     setStage("camera");
   }, [resetPuzzle, stopTimer]);
+
+  // Daily-leaderboard eligibility (also gates the ghost race).
+  const dailyEligible = !attackMode && !isUpload && seed === todaySeed();
+  const correctCount = puzzle
+    ? puzzle.tiles.filter((t) => t.id === t.currentIndex).length
+    : 0;
 
   const remaining = Math.max(0, budget - seconds);
   const displaySeconds = attackMode ? remaining : seconds;
@@ -284,13 +326,7 @@ function GameContent() {
           {/* Black inner frame for the video */}
           <div className="w-full h-full bg-black relative overflow-hidden border-2 border-black">
             {!isUpload && (
-              <CameraView
-                onStreamReady={(v) => {
-                  (
-                    videoRef as React.MutableRefObject<HTMLVideoElement>
-                  ).current = v;
-                }}
-              />
+              <CameraView onStreamReady={handleStreamReady} />
             )}
             {stage === "camera" && (
               <GestureOverlay
@@ -320,17 +356,31 @@ function GameContent() {
               records={records}
               videoRef={videoRef}
               gestureEnabled={!isUpload}
+              run={lastRunRef.current}
+              dailyEligible={dailyEligible}
               onPlayAgain={handlePlayAgain}
               onRetake={handleRetake}
             />
           ) : (
-            <PuzzleBoard
-              puzzle={puzzle}
-              videoRef={videoRef}
-              onSwap={handleSwap}
-              onUndo={handleUndo}
-              onRetake={handleRetake}
-            />
+            <div className="flex flex-col items-center gap-4 w-full">
+              {dailyEligible && (
+                <GhostRace
+                  seed={puzzle.seed}
+                  grid={gridSize}
+                  correct={correctCount}
+                  total={puzzle.tiles.length}
+                  startMs={startMsRef.current}
+                  solved={puzzle.solved}
+                />
+              )}
+              <PuzzleBoard
+                puzzle={puzzle}
+                videoRef={videoRef}
+                onSwap={handleSwap}
+                onUndo={handleUndo}
+                onRetake={handleRetake}
+              />
+            </div>
           ))}
 
         {/* Time-attack lose screen */}

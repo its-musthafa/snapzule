@@ -11,15 +11,28 @@ export default function CameraView({ onStreamReady }: CameraViewProps) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Keep latest callback in a ref so the camera effect never re-runs because
+  // of an unstable prop — re-acquiring the stream mid-game crashes MediaPipe.
+  const onStreamReadyRef = useRef(onStreamReady);
+  onStreamReadyRef.current = onStreamReady;
+
   useEffect(() => {
-    let stream: MediaStream;
+    let stream: MediaStream | undefined;
+    let cancelled = false;
 
     async function startCamera() {
       try {
-        stream = await navigator.mediaDevices.getUserMedia({
+        const s = await navigator.mediaDevices.getUserMedia({
           video: { width: 640, height: 480, facingMode: "user" },
           audio: false,
         });
+        // Unmounted while the permission/device prompt was pending: release
+        // immediately, otherwise the camera (and its LED) stays on forever.
+        if (cancelled) {
+          s.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        stream = s;
 
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
@@ -28,7 +41,7 @@ export default function CameraView({ onStreamReady }: CameraViewProps) {
             try {
               await videoRef.current?.play();
               setLoading(false);
-              onStreamReady?.(videoRef.current!);
+              onStreamReadyRef.current?.(videoRef.current!);
             } catch (e) {
               console.error("Video play failed:", e);
               setError("Camera stream started but video could not play.");
@@ -53,9 +66,10 @@ export default function CameraView({ onStreamReady }: CameraViewProps) {
     startCamera();
 
     return () => {
+      cancelled = true;
       stream?.getTracks().forEach((t) => t.stop());
     };
-  }, [onStreamReady]);
+  }, []);
 
   if (error) {
     return (

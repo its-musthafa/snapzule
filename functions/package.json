@@ -1,0 +1,21 @@
+{
+  "name": "snapzule-functions",
+  "private": true,
+  "description": "Snapzule Cloud Functions — anti-cheat run verification + counters.",
+  "engines": {
+    "node": "20"
+  },
+  "main": "lib/index.js",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "deploy": "firebase deploy --only functions:snapzule"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.7.0",
+    "firebase-functions": "^6.1.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}
